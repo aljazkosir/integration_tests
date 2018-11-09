@@ -101,12 +101,42 @@ class ProviderTenantAllView(TenantAllView):
 
     @property
     def is_displayed(self):
-        return (
-            self.logged_in_as_current_user and
-            self.navigation.currently_selected == ['Compute', 'Clouds', 'Providers'] and
-            self.entities.title.text == '{} (All Cloud Tenants)'.format(
-                self.context['object'].name)
-        )
+        def get_provider_navigation(provider):
+            # Return navigation path based on a type of a provider
+            from cfme.networks.provider import NetworkProvider
+            from cfme.cloud.provider import CloudProvider
+            if getattr(provider, 'name', False) and isinstance(provider, CloudProvider):
+                return ['Compute', 'Clouds', 'Providers']
+            elif getattr(provider, 'name', False) and isinstance(provider, NetworkProvider):
+                return ['Networks', 'Providers']
+            return []
+
+        expected_title = '{} (All Cloud Tenants)'
+        obj = self.context['object']
+        is_entity = getattr(obj, 'name', False) and isinstance(obj, BaseEntity)
+        is_filtered = isinstance(obj, BaseCollection) and obj.filters
+        filter = obj.filters.get('parent') or obj.filters.get('provider') if is_filtered else None
+
+        if is_entity:
+            logger.debug('Tenant view context object is assumed to be provider: %r', obj)
+            matched_title = self.entities.title.text == expected_title.format(obj.name)
+            matched_navigation = self.navigation.currently_selected == get_provider_navigation(obj)
+        elif filter and hasattr(filter, 'name'):
+            # filtered collection, use filter object's name and filter object's navigation
+            logger.debug(
+                'Tenant view context object has filter related to view with name attribute: %r',
+                obj.filters
+            )
+            matched_title = self.entities.title.text == expected_title.format(filter.name)
+            matched_navigation = (
+                    self.navigation.currently_selected == get_provider_navigation(filter)
+            )
+        else:
+            # not an entity with a name, or a filtered collection
+            matched_title = False
+            matched_navigation = False
+
+        return self.logged_in_as_current_user and matched_navigation and matched_title
 
 
 class TenantDetailsView(TenantView):
