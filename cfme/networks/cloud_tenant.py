@@ -1,9 +1,14 @@
 import attr
+from navmazing import NavigateToSibling
 
 from cfme.cloud.tenant import TenantDetailsView
 from cfme.common import Taggable
+from cfme.exceptions import DestinationNotFound
 from cfme.modeling.base import BaseCollection, BaseEntity, parent_of_type
 from cfme.networks import ValidateStatsMixin
+from cfme.networks.network_router import NetworkRouterCollection
+from cfme.networks.subnet import SubnetCollection
+from cfme.networks.views import ParentWithSubnetView, OneTenantNetworkRouterView
 from cfme.utils import version
 from cfme.utils.appliance.implementations.ui import navigator, CFMENavigateStep, navigate_to
 
@@ -16,6 +21,11 @@ class CloudTenant(Taggable, BaseEntity, ValidateStatsMixin):
     string_name = 'CloudTenant'
     quad_name = None
     db_types = ["CloudTenant"]
+
+    _collections = {
+        'subnets': SubnetCollection,
+        'routers': NetworkRouterCollection
+    }
 
     name = attr.ib()
     provider_obj = attr.ib(default=None)
@@ -70,3 +80,29 @@ class Details(CFMENavigateStep):
 
     def step(self):
         self.prerequisite_view.entities.get_entity(name=self.obj.name, surf_pages=True).click()
+
+
+@navigator.register(CloudTenant, 'CloudSubnets')
+class CloudSubnets(CFMENavigateStep):
+    VIEW = ParentWithSubnetView
+    prerequisite = NavigateToSibling('Details')
+
+    def step(self):
+        item = 'Cloud Subnets'
+        if not int(self.prerequisite_view.entities.relationships.get_text_of(item)):
+            raise DestinationNotFound("This Cloud Tenant doesn't have {item}".format(item=item))
+
+        self.prerequisite_view.entities.relationships.click_at(item)
+
+
+@navigator.register(CloudTenant, 'NetworkRouters')
+class NetworkRouters(CFMENavigateStep):
+    VIEW = OneTenantNetworkRouterView
+    prerequisite = NavigateToSibling('Details')
+
+    def step(self):
+        item = 'Network Routers'
+        if not int(self.prerequisite_view.entities.relationships.get_text_of(item)):
+            raise DestinationNotFound("This Cloud Tenant doesn't have {item}".format(item=item))
+
+        self.prerequisite_view.entities.relationships.click_at(item)
