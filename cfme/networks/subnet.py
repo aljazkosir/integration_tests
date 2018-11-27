@@ -3,11 +3,12 @@ from navmazing import NavigateToAttribute, NavigateToSibling
 from widgetastic.exceptions import NoSuchElementException
 
 from cfme.common import Taggable
-from cfme.exceptions import ItemNotFound
+from cfme.exceptions import ItemNotFound, DestinationNotFound
 from cfme.modeling.base import BaseCollection, BaseEntity, parent_of_type
 from cfme.networks import ValidateStatsMixin
 from cfme.networks.network_port import NetworkPortCollection
-from cfme.networks.views import SubnetDetailsView, SubnetView, SubnetAddView, SubnetEditView
+from cfme.networks.views import SubnetDetailsView, SubnetView, SubnetAddView, SubnetEditView, \
+    ParentWithNetworkPortView
 from cfme.utils import providers, version
 from cfme.utils.appliance.implementations.ui import navigator, CFMENavigateStep, navigate_to
 from cfme.utils.wait import wait_for
@@ -247,3 +248,16 @@ class EditSubnet(CFMENavigateStep):
 
     def step(self):
         self.prerequisite_view.toolbar.configuration.item_select('Edit this Cloud Subnet')
+
+
+@navigator.register(Subnet, 'NetworkPorts')
+class NetworkPorts(CFMENavigateStep):
+    VIEW = ParentWithNetworkPortView
+    prerequisite = NavigateToSibling('Details')
+
+    def step(self):
+        item = 'Network Ports'
+        if not int(self.prerequisite_view.entities.relationships.get_text_of(item)):
+            raise DestinationNotFound("This Subnet doesn't have {item}".format(item=item))
+
+        self.prerequisite_view.entities.relationships.click_at(item)

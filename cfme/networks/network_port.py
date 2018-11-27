@@ -4,13 +4,14 @@ from navmazing import NavigateToAttribute
 from cfme.common import Taggable
 from cfme.exceptions import ItemNotFound
 from cfme.modeling.base import BaseCollection, BaseEntity, parent_of_type
+from cfme.networks import ValidateStatsMixin
 from cfme.networks.views import NetworkPortDetailsView, NetworkPortView
 from cfme.utils import version
 from cfme.utils.appliance.implementations.ui import navigator, CFMENavigateStep, navigate_to
 
 
 @attr.s
-class NetworkPort(Taggable, BaseEntity):
+class NetworkPort(Taggable, BaseEntity, ValidateStatsMixin):
     """Class representing network ports in sdn"""
     in_version = ('5.8', version.LATEST)
     category = "networks"
@@ -42,6 +43,24 @@ class NetworkPort(Taggable, BaseEntity):
         """ Returns fixed ips (string) of the port """
         view = navigate_to(self, 'Details')
         return view.entities.properties.get_text_of('Fixed ip addresses')
+
+    @property
+    def type(self):
+        """ Return subnet's type"""
+        view = navigate_to(self, 'Details')
+        return view.entities.properties.get_text_of('Type')
+
+    @property
+    def num_cloud_subnets(self):
+        """ Return numbers of cloud subnets"""
+        view = navigate_to(self, 'Details')
+        return int(view.entities.relationships.get_text_of('Cloud subnets'))
+
+    @property
+    def cloud_tenant_name(self):
+        """ Return cloud tenant name"""
+        view = navigate_to(self, 'Details')
+        return view.entities.relationships.get_text_of('Cloud tenant')
 
     @property
     def provider(self):
@@ -96,8 +115,16 @@ class All(CFMENavigateStep):
 
 @navigator.register(NetworkPort, 'Details')
 class Details(CFMENavigateStep):
-    prerequisite = NavigateToAttribute('parent', 'All')
     VIEW = NetworkPortDetailsView
+
+    def prerequisite(self, *args, **kwargs):
+        """Navigate through filter parent if it exists else navigate through parent object"""
+        is_filtered = isinstance(self.obj.parent, BaseCollection) and self.obj.parent.filters
+        filter = (self.obj.parent.filters.get('parent') if is_filtered else None)
+        if is_filtered:
+            return navigate_to(filter, 'NetworkPorts')
+        else:
+            return navigate_to(self.obj.parent, 'All')
 
     def step(self):
         self.prerequisite_view.entities.get_entity(name=self.obj.name, surf_pages=True).click()
