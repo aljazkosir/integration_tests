@@ -2,14 +2,16 @@
 """This module tests Nuage EMS events."""
 import pytest
 
+from cfme.fixtures.nuage import create_basic_sandbox
 from cfme.networks.provider.nuage import NuageProvider
+from cfme.utils.log import logger
 
 pytestmark = [
     pytest.mark.provider([NuageProvider])
 ]
 
 
-def test_creating_entities_emits_events(register_event, with_nuage_sandbox):
+def test_creating_entities_emits_events(register_event, networks_provider):
     """
     Tests whether EMS events are emitted by Nuage server and recieved by MIQ. Here we test events
     that should be triggered upon entity creation. For example, when a new subnet is created on
@@ -30,21 +32,28 @@ def test_creating_entities_emits_events(register_event, with_nuage_sandbox):
         initialEstimate: 1/4h
     """
     listener = register_event
-    sandbox = with_nuage_sandbox
+    name_prefix = 'integration-tests-events'
 
-    expect_event(listener, 'nuage_enterprise_create', sandbox.enterprise['id'])
-    expect_event(listener, 'nuage_domaintemplate_create', sandbox.template['id'])
-    expect_event(listener, 'nuage_domain_create', sandbox.domain['id'])
-    expect_event(listener, 'nuage_zone_create', sandbox.zone['id'])
-    expect_event(listener, 'nuage_subnet_create', sandbox.subnet['id'])
-    expect_event(listener, 'nuage_vport_create', sandbox.cont_vport['id'], comment='L3 cont')
-    expect_event(listener, 'nuage_vport_create', sandbox.vm_vport['id'], comment='L3 vm')
-    expect_event(listener, 'nuage_l2domaintemplate_create', sandbox.l2_template['id'])
-    expect_event(listener, 'nuage_l2domain_create', sandbox.l2_domain['id'])
-    expect_event(listener, 'nuage_vport_create', sandbox.l2_cont_vport['id'], comment='L2 cont')
-    expect_event(listener, 'nuage_vport_create', sandbox.l2_vm_vport['id'], comment='L2 vm')
-    expect_event(listener, 'nuage_policygroup_create', sandbox.group['id'], comment='L1')
-    expect_event(listener, 'nuage_policygroup_create', sandbox.l2_group['id'], comment='L2')
+    expect_event(listener, name_prefix, 'nuage_enterprise_create')
+    expect_event(listener, name_prefix,  'nuage_domaintemplate_create')
+    expect_event(listener, name_prefix, 'nuage_domain_create')
+    expect_event(listener, name_prefix, 'nuage_zone_create')
+    expect_event(listener, name_prefix, 'nuage_subnet_create')
+    expect_event(listener, name_prefix, 'nuage_vport_create', comment='L3 cont')
+    expect_event(listener, name_prefix, 'nuage_vport_create', comment='L3 vm')
+    expect_event(listener, name_prefix, 'nuage_l2domaintemplate_create')
+    expect_event(listener, name_prefix, 'nuage_l2domain_create')
+    expect_event(listener, name_prefix, 'nuage_vport_create', comment='L2 cont')
+    expect_event(listener, name_prefix, 'nuage_vport_create', comment='L2 vm')
+    expect_event(listener, name_prefix, 'nuage_policygroup_create', comment='L1')
+    expect_event(listener, name_prefix, 'nuage_policygroup_create', comment='L2')
+
+    nuage = networks_provider.mgmt
+    sandbox = create_basic_sandbox(nuage, prefix=name_prefix)
+
+    enterprise = sandbox.enterprise['obj']
+    nuage.delete_enterprise(enterprise)
+    logger.info('Destroyed sandbox enterprise %s (%s)', enterprise.name, enterprise.id)
 
 
 def test_creating_entities_triggers_targeted_refresh(targeted_refresh, with_nuage_sandbox):
@@ -83,7 +92,7 @@ def test_creating_entities_triggers_targeted_refresh(targeted_refresh, with_nuag
         targeted_refresh.register_target(sandbox.l2_group['id'], 'Security group (L2)')
 
 
-def expect_event(listener, event_type, entity_id, comment=''):
+def expect_event(listener, name_prefix, event_type, comment=''):
     """
     Raise error unless event of type event_type is found with matching entity_id.
 
@@ -97,11 +106,11 @@ def expect_event(listener, event_type, entity_id, comment=''):
     """
     def cmp_function(_, full_data):
         # Nuage returns entities as a list, but there is always exactly one in there.
-        return full_data['entities'][0]['ID'] == entity_id
+        return full_data['entities'][0]['name'].startswith(name_prefix)
 
     listener(
         {
-            'full_data': '{} [ID={}] {}'.format(event_type, entity_id, comment),
+            'full_data': '{} [NAME_PREFIX={}] {}'.format(event_type, name_prefix, comment),
             'cmp_func': cmp_function
         },
         source='NUAGE',
